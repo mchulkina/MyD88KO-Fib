@@ -1,0 +1,476 @@
+#### First we load all the neccessary packages
+
+```{r}
+library(DESeq2)
+library(ggplot2)
+library(readxl)
+library(ggrepel)
+library(pheatmap)
+```
+
+
+```{r}
+set.seed(1234)
+```
+
+```{r}
+plot_lib_sizes <- function(data) {
+    df <- data.frame(lib.size = sort(colSums(data)))
+        plot(ggplot(df, aes(x = reorder(rownames(df), lib.size), y = lib.size)) +
+        geom_col() +
+        ggtitle("Sorted library sizes") +
+        theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1)) +
+        xlab(""))
+}
+```
+
+```{r}
+data <- read_xlsx("Counts.xlsx")
+```
+
+# Remove rows with NA values
+
+```{r}
+data <- na.omit(data)
+```
+
+```{r}
+coldata <- data.frame(row.names = colnames(data)[2:ncol(data)])
+```
+
+```{r}
+coldata$group  <-"Control"
+coldata$group[grepl("G2", rownames(coldata))] <- "MyD88KO-Fib"
+```
+
+```{r}
+counts <- data[, 2:ncol(data)]
+counts <- lapply(counts, as.integer)
+counts <- as.data.frame(counts)
+counts <- as.matrix(counts)
+rownames(counts) <- data$Gene
+```
+
+```{r}
+plot_lib_sizes(counts)
+```
+
+```{r}
+dds <- DESeqDataSetFromMatrix(counts, coldata, ~ group)
+```
+
+#Add gene info
+
+```{r}
+rowData(dds) <- data[, "Gene"]
+```
+
+```{r}
+keep <- rowSums(counts(dds)) >= 11
+dds <- dds[keep, ]
+```
+
+
+```{r}
+sampleDists <- dist(t(assay(vst(dds, blind = FALSE))))
+```
+
+```{r}
+pheatmap(as.matrix(sampleDists), cluster_cols = TRUE, cluster_rows = TRUE, show_colnames = FALSE)
+```
+
+```{r}
+d <- plotPCA(vst(dds, blind=FALSE), intgroup = c("group"), returnData = TRUE)
+percentVar <- round(100 * attr(d, "percentVar"))
+ggplot(d, aes(x = PC1, y = PC2, color = group)) +
+  geom_point() + 
+  geom_label_repel(aes(label = colnames(dds)), show.legend = FALSE) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) + 
+  coord_fixed()
+```
+
+```{r}
+rv <- rowVars(assay(vst(dds, blind = FALSE)))
+# select the ntop genes by variance
+select <- order(rv, decreasing=TRUE)[seq_len(min(500, length(rv)))]
+# perform a PCA on the data in assay(x) for the selected genes
+pca <- prcomp(t(assay(vst(dds, blind = FALSE))[select,]))
+```
+
+```{r}
+idx <- order(abs(pca$rotation[, "PC1"]), decreasing = TRUE)[1:40]
+pca$rotation[idx, "PC1"]
+```
+
+
+```{r}
+dds <- DESeq(dds, fitType = "local")
+```
+
+
+```{r}
+dds <- DESeqDataSetFromMatrix(counts, coldata, ~ group)
+```
+
+```{r}
+rowData(dds) <- data[, "Gene"]
+```
+
+```{r}
+keep <- rowSums(counts(dds)) >= 11
+dds <- dds[keep, ]
+```
+
+```{r}
+sampleDists <- dist(t(assay(vst(dds, blind = FALSE))))
+```
+
+```{r}
+pheatmap(as.matrix(sampleDists), cluster_cols = TRUE, cluster_rows = TRUE, show_colnames = FALSE)
+```
+
+```{r}
+custom_colors <- c("Control" = "steelblue", "MyD88KO-Fib" = "firebrick")
+d2<- plotPCA(vst(dds, blind=FALSE), intgroup = c("group"), returnData = TRUE)
+percentVar <- round(100 * attr(d, "percentVar"))
+ggplot(d2, aes(x = PC1, y = PC2, color = group)) +
+  geom_point() + 
+  geom_label_repel(aes(label = colnames(dds)), show.legend = FALSE) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) + 
+  coord_fixed()+
+  theme_bw()+
+scale_color_manual(values = custom_colors)
+```
+
+```{r}
+rv <- rowVars(assay(vst(dds, blind = FALSE)))
+# select the ntop genes by variance
+select <- order(rv, decreasing=TRUE)[seq_len(min(500, length(rv)))]
+# perform a PCA on the data in assay(x) for the selected genes
+pca <- prcomp(t(assay(vst(dds, blind = FALSE))[select,]))
+```
+
+```{r}
+idx <- order(abs(pca$rotation[, "PC1"]), decreasing = TRUE)[1:40]
+pca$rotation[idx, "PC1"]
+```
+
+
+
+
+```{r}
+dds <- DESeq(dds, fitType = "local")
+```
+
+
+```{r}
+ctrl.vs.ko <- as.data.frame(results(dds, contrast = c("group", "MyD88KO-Fib", "Control")))
+ctrl.vs.ko <- ctrl.vs.ko[!is.na(ctrl.vs.ko$pvalue), ]
+ctrl.vs.ko$sign <- ""
+ctrl.vs.ko$sign[(ctrl.vs.ko$log2FoldChange < 0) & (ctrl.vs.ko$pvalue < 0.05)] <- "Downregulated"
+ctrl.vs.ko$sign[(ctrl.vs.ko$log2FoldChange > 0) & (ctrl.vs.ko$pvalue < 0.05)] <- "Upregulated"
+ctrl.vs.ko <- ctrl.vs.ko[order(ctrl.vs.ko$sign),]
+```
+
+```{r}
+write.csv(ctrl.vs.ko, "DEGS_ctrl-vs-ko.csv")
+```
+
+```{r}
+highlightdwn<- ctrl.vs.ko[rownames(ctrl.vs.ko) %in% c("Spp1","Ccl2", "Il6st", "Icam1", "Cxcr5", "Ccl24",  "Il1b","C3", "Cxcl2", "Cxcr2", "C7", "Lyz2", "S100a8", "S100a9"), ]
+
+
+```
+
+```{r}
+ggplot(ctrl.vs.ko, aes(x = log2FoldChange, y = -log10(pvalue))) + 
+  
+  geom_point(aes(fill = sign, color = sign), 
+             alpha = 0.2, 
+             shape = 16,
+             size = 1) + 
+  scale_color_manual(values = c("gray", "steelblue", "firebrick"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +
+  scale_fill_manual(values = c("gray", "steelblue", "firebrick"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) + 
+  
+
+  
+   geom_label_repel(data = highlightdwn,   
+                   aes(label = rownames(highlightdwn)),
+                   force = 3,
+                   nudge_y = 6,
+                   xlim = c(-6, -1),
+                   ylim = c(NA, 20),
+             max.overlaps = Inf
+                    ) +
+  
+  scale_x_continuous(breaks = c(seq(-6, 6, 2)),     
+                     limits = c(-6, 6)) +
+  labs(x = "log2(fold change)",
+       y = "-log10(P-value)",
+       colour = "Expression \nchange") +
+  annotate("text", x = -4, y = 25, label = sprintf("Up in Control: %d", sum(ctrl.vs.ko$sign == "Downregulated"))) +
+  annotate("text", x = 4, y = 25, label = sprintf("Up in MyD88-KO: %d", sum(ctrl.vs.ko$sign == "Upregulated"))) + 
+  theme_bw(base_size = 14) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+ 
+  
+```
+
+
+
+```{r}
+pdf("ctrl-vs-ko.pdf", width = 7, height = 4)
+ggplot(ctrl.vs.ko, aes(x = log2FoldChange, y = -log10(pvalue))) + 
+  
+  geom_point(aes(fill = sign, color = sign), 
+             alpha = 0.2, 
+             shape = 16,
+             size = 1) + 
+  scale_color_manual(values = c("gray", "steelblue", "firebrick"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +
+  scale_fill_manual(values = c("gray", "steelblue", "firebrick"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) + 
+  
+
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+
+  
+   geom_label_repel(data = highlightdwn,   
+                   aes(label = rownames(highlightdwn)),
+                    force = 3,
+                   nudge_y = 6,
+                   xlim = c(-6, -1),
+                   ylim = c(NA, 20),
+             max.overlaps = Inf
+                    ) +
+  
+  scale_x_continuous(breaks = c(seq(-6, 6, 2)),     
+                     limits = c(-6, 6)) +
+  labs(x = "log2(fold change)",
+       y = "-log10(P-value)",
+       colour = "Expression \nchange") +
+  annotate("text", x = -4, y = 25, label = sprintf("Up in Control: %d", sum(ctrl.vs.ko$sign == "Downregulated"))) +
+  annotate("text", x = 4, y = 25, label = sprintf("Up in MyD88-KO: %d", sum(ctrl.vs.ko$sign == "Upregulated"))) + 
+  theme_bw(base_size = 14) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+
+```
+
+##gseGO
+
+```{r}
+library(clusterProfiler)
+library(msigdbr)
+library(org.Mm.eg.db)
+library(magrittr)
+
+```
+
+```{r}
+# reading in data from deseq2
+df = read.csv("DEGS_ctrl-vs-ko.csv", header=TRUE)
+
+# we want the log2 fold change 
+original_gene_list <- df$log2FoldChange
+
+# name the vector
+names(original_gene_list) <- df$X
+
+# omit any NA values 
+gene_list<-na.omit(original_gene_list)
+
+# sort the list in decreasing order (required for clusterProfiler)
+gene_list = sort(gene_list, decreasing = TRUE)
+```
+
+```{r}
+gse <- gseGO(geneList=gene_list, 
+             ont ="ALL", 
+             keyType = "SYMBOL", 
+             nPerm = 10000, 
+             minGSSize = 30, 
+             maxGSSize = 1600, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Mm.eg.db, 
+             pAdjustMethod = "BH")
+```
+
+```{r}
+write.csv(gse, "gse-ctrl-vs-ko.csv")
+```
+
+```{r}
+require(DOSE)
+dotplot(gse, 
+        showCategory=10, 
+        split=".sign", 
+        color = "p.adjust",
+        
+        
+        label_format = 150, 
+        
+        ) + facet_grid(.~.sign) 
+
+ categorys <- c("leukocyte chemotaxis",  "regulation of inflammatory response", "regulation of leukocyte activation", "leukocyte proliferation", "phagocytosis","production of molecular mediator of immune response", "positive regulation of leukocyte activation", "detection of stimulus", "regulation of defense response", "interleukin-6 production",
+                    "myeloid leukocyte migration")
+    dotplot(gse, showCategory = categorys, split=".sign", 
+        color = "p.adjust",
+        font.size = 16,
+        
+        label_format = 160,
+        
+        ) + facet_grid(.~.sign) +
+     theme_bw(base_size = 16) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+```
+
+```{r}
+pdf("gse-ctrl-vs-ko.pdf", width = 7, height = 7)
+require(DOSE)
+dotplot(gse, showCategory=8, split=".sign") + facet_grid(.~.sign) +
+  theme_bw(base_size = 15) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+```
+
+```{r}
+pdf("gse-ctrl-vs-ko-selected.pdf", width = 7, height = 4.5)
+require(DOSE)
+dotplot(gse, showCategory = categorys, split=".sign", 
+        color = "p.adjust",
+        font.size = 15,
+        label_format = 160,
+        
+        ) + facet_grid(.~.sign) + theme_classic(base_size = 15) +
+  theme_bw(base_size = 15) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+```
+
+```{r}
+
+gseaplot(gse, by = "all", title = gse$Description[3], geneSetID = 3)
+```
+
+```{r}
+library(clusterProfiler)
+library(org.Mm.eg.db)
+```
+
+
+```{r}
+# Convert gene IDs for gseKEGG function
+# We will lose some genes here because not all IDs will be converted
+ids<-bitr(names(original_gene_list), fromType = "SYMBOL", toType = "ENTREZID", OrgDb=org.Mm.eg.db)
+ # remove duplicate IDS (here I use "ENSEMBL", but it should be whatever was selected as keyType)
+dedup_ids = ids[!duplicated(ids[c("SYMBOL")]),]
+
+# Create a new dataframe df2 which has only the genes which were successfully mapped using the bitr function above
+df2 = df[df$X %in% dedup_ids$SYMBOL,]
+
+# Create a new column in df2 with the corresponding ENTREZ IDs
+df2$Y = dedup_ids$ENTREZID
+
+# Create a vector of the gene unuiverse
+kegg_gene_list <- df2$log2FoldChange
+
+# Name vector with ENTREZ ids
+names(kegg_gene_list) <- df2$Y
+
+# omit any NA values 
+kegg_gene_list<-na.omit(kegg_gene_list)
+
+# sort the list in decreasing order (required for clusterProfiler)
+kegg_gene_list = sort(kegg_gene_list, decreasing = TRUE)
+set.seed(123456)
+
+```
+
+
+```{r}
+kk2 <- gseKEGG(geneList     = kegg_gene_list,
+               organism     = "mmu",
+               keyType = "kegg",
+  exponent = 1,
+  minGSSize = 30,
+  maxGSSize = 600,
+  eps = 1e-10,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = "none",
+  verbose = TRUE,
+  use_internal_data = FALSE,
+  seed = FALSE,
+  by = "fgsea"
+)
+```
+
+```{r}
+write.csv(kk2, "kegg_wt.vs.myd88ko.csv")
+```
+
+
+```{r}
+require(DOSE)
+dotplot(kk2, 
+        showCategory=10, 
+        split=".sign", 
+        color = "p.adjust",
+            
+        label_format = 150, 
+        
+        ) + facet_grid(.~.sign) 
+```
+
+
+
+```{r}
+ categorys2 <- c("Cell adhesion molecules - Mus musculus (house mouse)", "C-type lectin receptor signaling pathway - Mus musculus (house mouse)", "NF-kappa B signaling pathway - Mus musculus (house mouse)", "Chemokine signaling pathway - Mus musculus (house mouse)", "Leukocyte transendothelial migration - Mus musculus (house mouse)", "Hematopoietic cell lineage - Mus musculus (house mouse)", "Complement and coagulation cascades - Mus musculus (house mouse)" )
+ 
+ # Use sub to remove the substring
+#cleaned_category <- gsub(" - Mus musculus \\(house mouse\\)", "", categorys2)
+
+
+
+    dotplot(kk2, showCategory = categorys2, split=".sign", 
+        color = "p.adjust",
+            
+        label_format = 120,
+        
+        ) + facet_grid(.~.sign) + theme_bw(base_size = 14) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+```
+
+
+```{r}
+pdf("KEGG-wt.vs.myd88ko-selected2.pdf", width = 7.5, height = 4)
+  dotplot(kk2, showCategory = categorys2, split=".sign", 
+        color = "p.adjust",
+        font.size = 18,
+        
+        label_format = 120,
+        
+        ) + facet_grid(.~.sign) + theme_bw(base_size = 13) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+```
+
+```{r}
+out = as.matrix(kk2@result)
+out = out[, 1:10]
+head(out)
+```

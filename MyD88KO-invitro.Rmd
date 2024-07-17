@@ -1,0 +1,533 @@
+
+```{r}
+library(DESeq2)
+library(ggplot2)
+library(readxl)
+library(ggrepel)
+library(pheatmap)
+```
+
+```{r}
+set.seed(1066)
+```
+
+```{r}
+plot_lib_sizes <- function(data) {
+    df <- data.frame(lib.size = sort(colSums(data)))
+        plot(ggplot(df, aes(x = reorder(rownames(df), lib.size), y = lib.size)) +
+        geom_col() +
+        ggtitle("Sorted library sizes") +
+        theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1)) +
+        xlab(""))
+}
+```
+
+```{r}
+data <- read.csv("Counts_MyD88KO_vitro.csv")
+```
+
+```{r}
+data <- na.omit(data)
+```
+
+```{r}
+coldata <- data.frame(row.names = colnames(data)[3:ncol(data)])
+```
+
+
+```{r}
+coldata$group <-"WT"
+coldata$group[grepl("WT_LPS", rownames(coldata))] <- "WT_LPS"
+coldata$group[grepl("MyD88KO", rownames(coldata))] <- "MyD88KO"
+coldata$group[grepl("MyD88KO_LPS", rownames(coldata))] <- "MyD88KO_LPS"
+```
+
+
+```{r}
+counts <- data[, 3:ncol(data)]
+counts <- lapply(counts, as.integer)
+counts <- as.data.frame(counts)
+counts <- as.matrix(counts)
+rownames(counts) <- data$Gene
+```
+
+```{r}
+plot_lib_sizes(counts)
+```
+
+```{r}
+dds <- DESeqDataSetFromMatrix(counts, coldata, ~ group)
+```
+
+
+Add gene info
+```{r}
+rowData(dds) <- data[, "Gene"]
+```
+
+```{r}
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+```
+
+
+```{r}
+sampleDists <- dist(t(assay(vst(dds, blind = FALSE))))
+```
+
+```{r}
+pheatmap(as.matrix(sampleDists), cluster_cols = TRUE, cluster_rows = TRUE, show_colnames = FALSE)
+```
+
+```{r}
+custom_colors <- c("WT" = "black", "MyD88KO" = "darkcyan", "WT_LPS" = "deeppink", "MyD88KO_LPS" = "purple4")
+d <- plotPCA(vst(dds, blind=FALSE), intgroup = c("group"), returnData = TRUE)
+percentVar <- round(100 * attr(d, "percentVar"))
+ggplot(d, aes(x = PC1, y = PC2, color = group)) +
+  geom_point() + 
+    geom_label_repel(aes(label = colnames(dds)), show.legend = FALSE, max.overlaps=20) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) + 
+  coord_fixed()+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),) +
+scale_color_manual(values = custom_colors)
+```
+
+
+
+```{r}
+rv <- rowVars(assay(vst(dds, blind = FALSE)))
+# select the ntop genes by variance
+select <- order(rv, decreasing=TRUE)[seq_len(min(500, length(rv)))]
+# perform a PCA on the data in assay(x) for the selected genes
+pca <- prcomp(t(assay(vst(dds, blind = FALSE))[select,]))
+```
+
+```{r}
+idx <- order(abs(pca$rotation[, "PC1"]), decreasing = TRUE)[1:40]
+pca$rotation[idx, "PC1"]
+```
+```{r}
+idx <- order(abs(pca$rotation[, "PC2"]), decreasing = TRUE)[1:40]
+pca$rotation[idx, "PC2"]
+```
+
+
+```{r}
+dds <- DESeq(dds, fitType = "local")
+```
+
+
+
+```{r}
+wt.vs.totmyd88ko <- as.data.frame(results(dds, contrast = c("group", "MyD88KO", "WT")))
+wt.vs.totmyd88ko <- wt.vs.totmyd88ko[!is.na(wt.vs.totmyd88ko$padj), ]
+wt.vs.totmyd88ko$sign <- ""
+wt.vs.totmyd88ko$sign[(wt.vs.totmyd88ko$log2FoldChange < 0) & (wt.vs.totmyd88ko$padj < 0.01)] <- "Downregulated"
+wt.vs.totmyd88ko$sign[(wt.vs.totmyd88ko$log2FoldChange > 0) & (wt.vs.totmyd88ko$padj < 0.01)] <- "Upregulated"
+wt.vs.totmyd88ko <- wt.vs.totmyd88ko[order(wt.vs.totmyd88ko$sign),]
+```
+
+
+```{r}
+write.csv(wt.vs.totmyd88ko, "in-vitro-wt-vs-myd88ko.csv")
+```
+
+
+
+```{r fig.align="center", fig.width = 7, fig.height= 4.5}
+x_limits <- c(2, NA)
+y_limits <- c(0.05, 200)
+
+a_limits <- c(-NA, -2)
+b_limits <- c(10, 200)
+
+wt.vs.totmyd88ko$gene=row.names(wt.vs.totmyd88ko)
+
+selectLab = c("Il6", "Il6ra", "Ccl6", "Ccl2", "Ccl7", "Ccl20", "Cx3cl1","Cxcl12",  "Cxcl1", "Tnfaip3", "Cxcl12", "Fgf7", "Sema3a", "Icam1",  "Col6a3", "Flt1", "Adamts12", "Dlk1", "Tgfb3", "Glipr1", "Olr1", "Efemp1")
+
+upgene=wt.vs.totmyd88ko[wt.vs.totmyd88ko$gene %in% selectLab & wt.vs.totmyd88ko$sign == "Upregulated",]
+
+downgene=wt.vs.totmyd88ko[wt.vs.totmyd88ko$gene %in% selectLab & wt.vs.totmyd88ko$sign == "Downregulated",]
+
+deg1=wt.vs.totmyd88ko[wt.vs.totmyd88ko$sign %in% c("Upregulated", "Downregulated"),]
+
+ggplot(wt.vs.totmyd88ko, aes(x = log2FoldChange, y = -log10(padj))) + 
+   geom_point(aes(fill = sign, color = sign), 
+             alpha = 0.2, 
+             shape = 16,
+             size = 1)  +
+  geom_label_repel(aes(label=gene),
+                   data = upgene,
+                   force = 2,
+                   nudge_y = 5,
+                   xlim = c(1, 6),
+                   ylim = c(5, NA),
+                   size = 4,
+                   max.overlaps = 3)+
+  geom_label_repel(aes(label=gene),
+                   data = downgene,
+                   force = 20,
+                   nudge_y = 15,
+                   xlim = c(-10, -1),
+                   ylim = c(5, 200),
+                   size = 4,
+                   max.overlaps = 50
+                   )+
+
+
+  scale_color_manual(values = c("gray", "black", "darkcyan"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +
+  scale_fill_manual(values = c("gray", "black", "darkcyan"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) + 
+  
+
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  
+  scale_x_continuous(breaks = c(seq(-10, 10, 5)),     
+                     limits = c(-10, 10)) +
+  labs(x = "log2(fold change)",
+       y = "-log10(padj)",
+       colour = "Expression \nchange") +
+  theme_bw(base_size = 14) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, linewidth= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+
+options(ggrepel.max.overlaps = 50)
+
+```
+
+
+```{r}
+wtlps.vs.totmyd88kolps <- as.data.frame(results(dds, contrast = c("group", "MyD88KO_LPS", "WT_LPS")))
+wtlps.vs.totmyd88kolps <- wtlps.vs.totmyd88kolps[!is.na(wtlps.vs.totmyd88kolps$padj), ]
+wtlps.vs.totmyd88kolps$sign <- ""
+wtlps.vs.totmyd88kolps$sign[(wtlps.vs.totmyd88kolps$log2FoldChange < 0) & (wtlps.vs.totmyd88kolps$padj < 0.01)] <- "Downregulated"
+wtlps.vs.totmyd88kolps$sign[(wtlps.vs.totmyd88kolps$log2FoldChange > 0) & (wtlps.vs.totmyd88kolps$padj < 0.01)] <- "Upregulated"
+wtlps.vs.totmyd88kolps <- wtlps.vs.totmyd88kolps[order(wtlps.vs.totmyd88kolps$sign),]
+```
+
+
+```{r fig.align="center", fig.width = 6, fig.height= 4}
+x_limits <- c(2, NA)
+y_limits <- c(0.05, 300)
+
+a_limits <- c(-NA, -2)
+b_limits <- c(10, 300)
+
+wtlps.vs.totmyd88kolps$gene=row.names(wtlps.vs.totmyd88kolps)
+
+selectLab = c("Il6", "Il6ra", "Ccl6", "Ccl2", "Ccl7", "Ccl20", "Cx3cl1","Cxcl12",  "Cxcl1",  "Cxcl12", "Fgf7", "Sema3a", "Icam1",  "Col6a3", "Adamts12", "Dlk1", "Tgfb3", "Glipr1", "Olr1")
+
+
+upgene=wtlps.vs.totmyd88kolps[wtlps.vs.totmyd88kolps$gene %in% selectLab & wtlps.vs.totmyd88kolps$sign == "Upregulated",]
+
+downgene=wtlps.vs.totmyd88kolps[wtlps.vs.totmyd88kolps$gene %in% selectLab & wtlps.vs.totmyd88kolps$sign == "Downregulated",]
+
+deg2=wtlps.vs.totmyd88kolps[wtlps.vs.totmyd88kolps$sign %in% c("Upregulated", "Downregulated"),]
+
+ggplot(wtlps.vs.totmyd88kolps, aes(x = log2FoldChange, y = -log10(padj))) + 
+   geom_point(aes(fill = sign, color = sign), 
+             alpha = 0.2, 
+             shape = 16,
+             size = 1)  +
+   geom_label_repel(aes(label=gene),
+                   data = upgene,
+                   force = 2,
+                   nudge_y = 5,
+                   xlim = c(1, 6),
+                   ylim = c(5, NA),
+                   size = 4,
+                   max.overlaps = 3)+
+  geom_label_repel(aes(label=gene),
+                   data = downgene,
+                   force = 20,
+                   nudge_y = 15,
+                   xlim = c(-15, -1),
+                   ylim = c(5, 300),
+                   size = 4,
+                   max.overlaps = 50
+                   )+
+
+
+  scale_color_manual(values = c("gray", "deeppink", "purple4"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +
+  scale_fill_manual(values = c("gray", "deeppink", "purple4"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) + 
+  
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  
+  scale_x_continuous(breaks = c(seq(-15, 15, 5)),     
+                     limits = c(-15, 10)) +
+  labs(x = "log2(fold change)",
+       y = "-log10(padj)",
+       colour = "Expression \nchange") +
+      theme_bw(base_size = 14) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, linewidth= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+
+```
+
+```{r}
+write.csv(wtlps.vs.totmyd88kolps, "in-vitro-wtLPS-vs-myd88koLPS.csv")
+```
+
+
+
+
+
+```{r}
+wtlps.vs.wt <- as.data.frame(results(dds, contrast = c("group", "WT", "WT_LPS")))
+wtlps.vs.wt <- wtlps.vs.wt[!is.na(wtlps.vs.wt$padj), ]
+wtlps.vs.wt$sign <- ""
+wtlps.vs.wt$sign[(wtlps.vs.wt$log2FoldChange < 0) & (wtlps.vs.wt$padj < 0.01)] <- "Downregulated"
+wtlps.vs.wt$sign[(wtlps.vs.wt$log2FoldChange > 0) & (wtlps.vs.wt$padj < 0.01)] <- "Upregulated"
+wtlps.vs.wt <- wtlps.vs.wt[order(wtlps.vs.wt$sign),]
+```
+
+
+```{r fig.align="center", fig.width = 6, fig.height= 4}
+x_limits <- c(2, NA)
+y_limits <- c(0.05, 200)
+
+a_limits <- c(-NA, -2)
+b_limits <- c(10, 200)
+
+wtlps.vs.wt$gene=row.names(wtlps.vs.wt)
+
+selectLab = c("Il6", "Il6ra", "Ccl6", "Ccl2", "Ccl7", "Ccl8", "Cx3cl1","Cxcl12",  "Cxcl16", "Cxcl5", "Cxcl12", "Fgf7", "Sema3a", "Grem2", "Maf", "Fgf13", "Icam1", "Nsg1", "Col6a3", "Flt1", "Adamts12", "Dlk1", "Tgfb3", "Glipr1", "Olr1", "Adam8", "il6ra", "Il6", "Trem2",  "Tgfb1", "Tgfb2", "Tgfb3")
+
+upgene=wtlps.vs.wt[wtlps.vs.wt$gene %in% selectLab & wtlps.vs.wt$sign == "Upregulated",]
+
+downgene=wtlps.vs.wt[wtlps.vs.wt$gene %in% selectLab & wtlps.vs.wt$sign == "Downregulated",]
+
+deg3=wtlps.vs.wt[wtlps.vs.wt$sign %in% c("Upregulated", "Downregulated"),]
+
+ggplot(wtlps.vs.wt, aes(x = log2FoldChange, y = -log10(padj))) + 
+  theme_classic(base_size = 14) + 
+ geom_point(aes(fill = sign, color = sign), shape = 16, stroke = 0.5, alpha = .7, size = 1.5) +
+  geom_label_repel(aes(label=gene), data = upgene, xlim = x_limits, ylim = y_limits, size = 5)+
+  
+  geom_label_repel(aes(label=gene), data = downgene, xlim = a_limits, ylim = b_limits, size = 5)+
+  
+    scale_color_manual(values = c("gray", "royalblue", "darkred"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +
+  scale_fill_manual(values = c("gray", "royalblue", "darkred"), name = "Significance", labels = c("Not significant", "Downregulated", "Upregulated")) +  
+  annotate("text", x = -7, y = 200, size= 4, label = sprintf("Up in WT+LPS: %d", sum(wtlps.vs.wt$sign == "Downregulated"))) +
+  annotate("text", x = 2, y = 200, size= 4 , label = sprintf("Up in WT: %d", sum(wtlps.vs.wt$sign == "Upregulated"))) + 
+  ggtitle("WT_LPS vs WT") +
+    theme(legend.position = "none")
+
+
+options(ggrepel.max.overlaps = Inf)
+```
+
+
+```{r}
+write.csv(wtlps.vs.wt, "in-vitro-wtLPS-vs-wt.csv")
+```
+
+
+
+gseGO
+
+```{r}
+library(clusterProfiler)
+library(msigdbr)
+library(org.Mm.eg.db)
+library(magrittr)
+
+```
+
+```{r}
+# reading in data from deseq2
+df = read.csv("in-vitro-wt-vs-myd88ko.csv", header=TRUE)
+
+# we want the log2 fold change 
+original_gene_list <- df$log2FoldChange
+
+# name the vector
+names(original_gene_list) <- df$X
+
+# omit any NA values 
+gene_list<-na.omit(original_gene_list)
+
+# sort the list in decreasing order (required for clusterProfiler)
+gene_list = sort(gene_list, decreasing = TRUE)
+```
+
+```{r}
+gse <- gseGO(geneList=gene_list, 
+             ont ="ALL", 
+             keyType = "SYMBOL", 
+             nPerm = 10000, 
+             minGSSize = 30, 
+             maxGSSize = 1600, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Mm.eg.db, 
+             pAdjustMethod = "BH")
+```
+
+```{r}
+write.csv(gse, "in-vitro-gse-ctrl-vs-ko.csv")
+```
+
+```{r fig.align="center", fig.width = 10, fig.height= 8}
+require(DOSE)
+dotplot(gse, 
+        showCategory=15, 
+        split=".sign", 
+        color = "p.adjust",
+        
+        
+        label_format = 200, 
+        
+        ) + facet_grid(.~.sign) 
+
+ categorys <- c("antimicrobial humoral response", "regulation of chemokine production", "leukocyte chemotaxis", "regulation of inflammatory response", "regulation of leukocyte activation", "production of molecular mediator of immune response", "positive regulation of leukocyte activation", "defense response to bacterium", "regulation of defense response", "interleukin-6 production", "defence responce to bacterium", "response to bacterium","leukocyte migration", "myeloid leukocyte migration", "antimicrobial humoral response")
+    dotplot(gse, showCategory = categorys, split=".sign", 
+        color = "p.adjust",
+        font.size = 4,
+                label_format = 50,
+        
+        ) + facet_grid(.~.sign) +
+     theme_bw(base_size = 24) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+
+    
+```
+
+
+```{r}
+# reading in data from deseq2
+df2 = read.csv("in-vitro-wtLPS-vs-myd88koLPS.csv", header=TRUE)
+
+# we want the log2 fold change 
+original_gene_list2 <- df2$log2FoldChange
+
+# name the vector
+names(original_gene_list2) <- df2$X
+
+# omit any NA values 
+gene_list2<-na.omit(original_gene_list2)
+
+# sort the list in decreasing order (required for clusterProfiler)
+gene_list2 = sort(gene_list2, decreasing = TRUE)
+```
+
+```{r}
+gse2 <- gseGO(geneList=gene_list2, 
+             ont ="ALL", 
+             keyType = "SYMBOL", 
+             nPerm = 10000, 
+             minGSSize = 30, 
+             maxGSSize = 1600, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Mm.eg.db, 
+             pAdjustMethod = "BH")
+```
+
+```{r}
+write.csv(gse2, "in-vitro-gse-ctrlLPS-vs-koLPS.csv")
+```
+
+```{r fig.align="center", fig.width = 10, fig.height= 8}
+require(DOSE)
+dotplot(gse2, 
+        showCategory=15, 
+        split=".sign", 
+        color = "p.adjust",
+        
+        
+        label_format = 200, 
+        
+        ) + facet_grid(.~.sign) 
+
+ categorys <- c("antimicrobial humoral response", "regulation of chemokine production", "leukocyte chemotaxis", "regulation of inflammatory response", "regulation of leukocyte activation", "defense response to bacterium", "regulation of defense response", "interleukin-6 production", "defence responce to bacterium", "response to bacterium","leukocyte migration", "myeloid leukocyte migration", "antimicrobial humoral response")
+    dotplot(gse2, showCategory = categorys, split=".sign", 
+        color = "p.adjust",
+        font.size = 4,
+                label_format = 50,
+        
+        ) + facet_grid(.~.sign) +
+     theme_bw(base_size = 24) + # Select theme with a white background  
+  theme(panel.border = element_rect(color = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+
+    
+```
+
+
+```{r}
+library(VennDiagram)
+
+```
+
+
+```{r}
+set1 <- deg1 ["gene"]
+set2 <- deg2 ["gene"]
+set3 <- deg3 ["gene"]
+```
+
+
+```{r}
+write.csv(set1, "DEGs WTvsKO.csv")
+write.csv(set2, "DEGs WT-LPSvsKO-LPS.csv")
+write.csv(set3, "DEGs WT-LPSvsWT.csv")
+```
+
+
+
+```{r}
+# Convert to vectors
+set1_vector <- as.vector(unlist(set1))
+set2_vector <- as.vector(unlist(set2))
+set3_vector <- as.vector(unlist(set3))
+```
+
+
+```{r}
+# Create Venn Diagram 
+x_limits <- c(2, NA)
+y_limits <- c(0.05, 200)
+
+venn.diagram(
+  x = list(set1_vector, set2_vector, set3_vector), col=c("darkorange", 'skyblue', "springgreen3"),
+  category.names = c("WT vs KO" , "WT+LPS vs KO+LPS", "WT+LPS vs WT"), 
+  fill = c(alpha("darkorange",0.3), alpha('skyblue',0.3), alpha("springgreen3",0.3)),
+  cex = 2,
+  
+  fontfamily = "sans",
+          cat.pos = c(-35, 35, 180),
+	cat.dist = c(0.2, 0.2, 0.15),
+		cat.cex = 2.5,
+	reverse = TRUE,
+          cat.fontfamily = "sans",
+
+  lty = 1,
+  filename = '#Venn-in-vitro-WT-MyD88KO-LPS.tiff',
+  output=TRUE,
+  )
+
+```
+
+
+```{r}
+identical_elements <- Reduce(intersect, list(set1_vector, set2_vector, set3_vector))
+```
+
+
+```{r}
+write.csv(identical_elements, "Venn-in-vitro--DEG-wt-myd88ko-lps.csv")
+```
