@@ -1,1 +1,17 @@
-
+File_name,Animal_ID ,Sex,Group_name,Isolation_site,Sample_name
+A11,2 LP,F,CONTROL,colon_1 palet,A1-1
+A12,3 NM,F,CONTROL,colon_content,A1-2
+A13,5 LP,M,CONTROL,colon_content,A1-3
+A14,6 NM,M,CONTROL,colon_content,A1-4
+A22,4 RP,M,MyD88KO-FIB,colon_content,A2-2
+A23,7 RP,M,MyD88KO-FIB,colon_content,A2-3
+A24,8 LP,M,MyD88KO-FIB,colon_content,A2-4
+A25,10 NM,M,MyD88KO-FIB,colon_content,A2-5
+B11,2 LP,F,CONTROL,ceacal_content,B1-1
+B12,3 NM,F,CONTROL,ceacal_content,B1-2
+B13,5 LP,M,CONTROL,ceacal_content,B1-3
+B14,6 NM,M,CONTROL,ceacal_content,B1-4
+B22,4 RP,M,MyD88KO-FIB,ceacal_content,B2-2
+B23,7 RP,M,MyD88KO-FIB,ceacal_content,B2-3
+B24,8 LP,M,MyD88KO-FIB,ceacal_content,B2-4
+B25,10 NM,M,MyD88KO-FIB,ceacal_content,B2-5
