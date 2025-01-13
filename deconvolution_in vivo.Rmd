@@ -1,0 +1,157 @@
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(immunedeconv)
+library(tibble)
+library(devtools)
+library(pals)
+library(here)
+library(readxl)
+
+```
+
+
+```{r}
+
+here()
+df <- read_xlsx(here("data/FPKM.xlsx"))
+```
+
+
+```{r}
+df1 <- aggregate(. ~ Gene, data=df, FUN=sum)
+
+```
+
+
+```{r}
+# Extract the first column as row names
+row.names(df1) <- df1$Gene
+```
+```{r}
+df2 <- df1[, -c(1)]
+row.names(df2) <- df1$Gene
+
+```
+
+
+```{r}
+immunedeconv::deconvolute_mouse(df2, "mmcp_counter")
+```
+```{r}
+write.csv(immunedeconv::deconvolute_mouse(df2, "mmcp_counter"), file = "df2.csv")
+```
+
+
+```{r}
+res_mMCPcounter <- immunedeconv::deconvolute_mouse(df2, "mmcp_counter" )
+```
+
+
+```{r}
+# Filter the data frame for the specified cell types
+filtered_data <- res_mMCPcounter %>%
+  filter(cell_type %in% c("B cell", "Eosinophil", "Monocyte", "Cancer associated fibroblast", "Endothelial cell", "Macrophage/Monocyte", "Neutrophil", "T cell")) %>%
+  mutate(cell_type = case_when(
+    cell_type == "Cancer associated fibroblast" ~ "Activated Fibroblast",
+    cell_type == "Macrophage/Monocyte" ~ "Activated Macrophage",
+    cell_type == "Monocyte" ~ "Monocyte/Macrophage",
+    TRUE ~ as.character(cell_type)
+  ))
+
+
+alphabet_palette <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#8c564b", "#9467bd",  "#d62728" ,
+                      "#e377c2", "#17becf")
+
+# Plot using the "alphabet" palette
+filtered_data  %>%
+  gather(sample, score, -cell_type) %>%
+  ggplot(aes(x = sample, y = score, color = cell_type)) +
+  geom_point(size = 3) +
+  facet_wrap(~cell_type, scales = "free_x", ncol = 4) +
+  scale_color_manual(values = alphabet_palette) +
+  coord_flip() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(), 
+        text = element_text(size = 14)
+        )
+
+```
+
+```{r}
+
+here()
+df3 <- read_xlsx(here("data/Rag_fpkm.xlsx"))
+```
+
+
+```{r}
+df4 <- aggregate(. ~ Gene, data=df3, FUN=sum)
+
+```
+
+
+```{r}
+# Extract the first column as row names
+row.names(df4) <- df4$Gene
+```
+
+```{r}
+df5 <- df4[, -c(1)]
+row.names(df5) <- df4$Gene
+
+```
+
+
+```{r}
+immunedeconv::deconvolute_mouse(df5, "mmcp_counter")
+```
+```{r}
+write.csv(immunedeconv::deconvolute_mouse(df5, "mmcp_counter"), file = "Rag-df5.csv")
+```
+
+```{r}
+res_mMCPcounter2 <- immunedeconv::deconvolute_mouse(df5, "mmcp_counter" )
+```
+
+
+```{r}
+# Filter the data frame for the specified cell types
+filtered_data2 <- res_mMCPcounter2 %>%
+  filter(cell_type %in% c( "Eosinophil", "Monocyte", "Cancer associated fibroblast", "Endothelial cell", "Macrophage/Monocyte", "Neutrophil")) %>%
+  mutate(cell_type = case_when(
+    cell_type == "Cancer associated fibroblast" ~ "Activated Fibroblast",
+    cell_type == "Macrophage/Monocyte" ~ "Activated Macrophage",
+    cell_type == "Monocyte" ~ "Monocyte/Macrophage",
+    TRUE ~ as.character(cell_type)
+  ))
+
+
+alphabet_palette <- c("#1f77b4", "#ff7f0e", "#8c564b", "#9467bd",  "#d62728" ,
+                      "#e377c2")
+
+# Plot using the "alphabet" palette
+filtered_data2  %>%
+  gather(sample, score, -cell_type) %>%
+  ggplot(aes(x = sample, y = score, color = cell_type)) +
+  geom_point(size = 3) +
+  facet_wrap(~cell_type, scales = "free_x", ncol = 3) +
+  scale_color_manual(values = alphabet_palette) +
+  coord_flip() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(), 
+        text = element_text(size = 12)
+        )
+
+```
+
+
+
+
+
